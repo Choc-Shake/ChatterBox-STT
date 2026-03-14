@@ -32,7 +32,8 @@
             align-items: center;
             padding: 6px;
             box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.8);
-            transition: width 0.5s cubic-bezier(0.2, 1, 0.2, 1), padding 0.5s ease, gap 0.5s ease, border-color 0.3s ease;
+            /* Unified 0.7s transition for perfectly synced expansion */
+            transition: width 0.7s cubic-bezier(0.2, 1, 0.2, 1), padding 0.7s cubic-bezier(0.2, 1, 0.2, 1), gap 0.7s cubic-bezier(0.2, 1, 0.2, 1), border-color 0.3s ease;
             overflow: hidden;
             white-space: nowrap;
             height: 64px;
@@ -67,7 +68,7 @@
             display: flex;
             align-items: center;
             gap: 0;
-            transition: gap 0.4s cubic-bezier(0.2, 1, 0.2, 1);
+            transition: gap 0.7s cubic-bezier(0.2, 1, 0.2, 1); /* Synced with pill width */
         }
 
         .controls-group.hovered {
@@ -104,15 +105,14 @@
         /* Red Cancel Button Wrapper (Handles the slide out) */
         .cancel-btn-wrapper {
             width: 0;
-            opacity: 0;
-            overflow: hidden;
             display: flex;
-            transition: width 0.4s cubic-bezier(0.2, 1, 0.2, 1), opacity 0.4s cubic-bezier(0.2, 1, 0.2, 1);
+            position: relative;
+            z-index: 5; /* Keep behind main toggle button */
+            transition: width 0.7s cubic-bezier(0.2, 1, 0.2, 1); /* Synced with pill width */
         }
 
         .controls-group.hovered .cancel-btn-wrapper {
             width: 52px;
-            opacity: 1;
         }
 
         /* Red Cancel Button */
@@ -128,15 +128,23 @@
             outline: none;
             cursor: pointer;
             flex-shrink: 0;
-            transition: all 0.2s ease;
+            transition: all 0.7s cubic-bezier(0.2, 1, 0.2, 1); /* Synced with pill width */
+            transform: translateX(-52px); /* Hide behind the gold button */
+            pointer-events: none;
         }
 
-        .cancel-btn:hover {
+        .controls-group.hovered .cancel-btn {
+            transform: translateX(0);
+            pointer-events: auto;
+        }
+
+        .controls-group.hovered .cancel-btn:hover {
             background-color: #DC2626;
+            transform: translateX(0) scale(1.05);
         }
 
-        .cancel-btn:active {
-            transform: scale(0.92);
+        .controls-group.hovered .cancel-btn:active {
+            transform: translateX(0) scale(0.92);
         }
 
         /* White square edge inside cancel button */

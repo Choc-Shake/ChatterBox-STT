@@ -175,6 +175,21 @@ class SVGIconWidget(QWidget):
             painter.setPen(QPen(QColor("#D4AF37"), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
             painter.drawLine(4, 12, 9, 17)
             painter.drawLine(9, 17, 20, 6)
+            
+        elif self.mode == "PAUSE":
+            painter.setBrush(QBrush(self._color))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(6, 4, 4, 16, 1, 1)
+            painter.drawRoundedRect(14, 4, 4, 16, 1, 1)
+
+class StopSquareWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(14, 14)
+    def paintEvent(self, event):
+        p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(QPen(QColor("white"), 2))
+        p.drawRoundedRect(1, 1, 12, 12, 2, 2)
 
 # === THREADS ===
 
@@ -184,6 +199,7 @@ class AudioThread(QThread):
     def __init__(self):
         super().__init__()
         self.active = False
+        self.paused = False
     def run(self):
         self.active = True
         frames = []
@@ -192,7 +208,11 @@ class AudioThread(QThread):
             stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
             while self.active:
                 data = stream.read(CHUNK, False)
-                frames.append(data)
+                if not self.paused:
+                    arr = np.frombuffer(data, dtype=np.int16)
+                    rms = float(np.sqrt(np.mean(np.square(arr.astype(np.float32)))))
+                    self.level.emit(rms)
+                    frames.append(data)
             stream.stop_stream(); stream.close(); p.terminate()
             
             wav_io = io.BytesIO()
@@ -277,34 +297,49 @@ class SettingsDialog(QDialog):
 # === MAIN PILL ===
 
 class MorphPill(QFrame):
+    hovered = pyqtSignal(bool)
+    main_clicked = pyqtSignal()
+    cancel_clicked = pyqtSignal()
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("pill")
-        self._w = 260
+        self.setFixedSize(64, 64)
+        self.setStyleSheet("QFrame#pill { background-color: #0A0A0A; border: 1.5px solid #33290D; border-radius: 32px; }")
         
-        l = QHBoxLayout(self)
-        l.setContentsMargins(6, 6, 28, 6) # exact HTML padding
-        l.setSpacing(18) # exact HTML gap
-        
-        self.btn = QFrame()
-        self.btn.setFixedSize(52, 52)
-        self.btn.setStyleSheet("background-color: #D4AF37; border-radius: 26px;")
-        bl = QVBoxLayout(self.btn); bl.setContentsMargins(0, 0, 0, 0); bl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Absolute positioning guarantees zero layout squishing artifacts
+        self.main_btn = QFrame(self)
+        self.main_btn.setFixedSize(52, 52)
+        self.main_btn.move(6, 6)
+        self.main_btn.setStyleSheet("QFrame { background-color: #D4AF37; border-radius: 26px; }")
+        bl = QVBoxLayout(self.main_btn); bl.setContentsMargins(0, 0, 0, 0); bl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon = SVGIconWidget("CUBE", 28); bl.addWidget(self.icon)
-        l.addWidget(self.btn)
         
-        self.stack = QStackedWidget()
+        # Cancel Wrapper (Behind main_btn, slides out to right)
+        self.cancel_wrapper = QFrame(self)
+        self.cancel_wrapper.setFixedSize(52, 52)
+        self.cancel_wrapper.move(6, 6)
+        self.cancel_wrapper.lower() # Behind main_btn
         
-        # States
+        self.cancel_btn = QPushButton(self.cancel_wrapper)
+        self.cancel_btn.setFixedSize(52, 52)
+        self.cancel_btn.setStyleSheet("QPushButton { background-color: #EF4444; border-radius: 26px; border: none; } QPushButton:hover { background-color: #DC2626; }")
+        cl = QVBoxLayout(self.cancel_btn); cl.setContentsMargins(0,0,0,0); cl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.stop_icon = StopSquareWidget(); cl.addWidget(self.stop_icon)
+        
+        self.stack = QStackedWidget(self)
+        self.stack.move(74, 6) # 6 pad + 52 btn + 16 gap
+        self.stack.setFixedSize(220, 52)
+        
         def make_st(text, widget=None, icon=None):
-            w = QWidget(); hl = QHBoxLayout(w); hl.setContentsMargins(0, 0, 0, 0); hl.setSpacing(12)
+            w = QWidget(); hl = QHBoxLayout(w); hl.setContentsMargins(0,0,0,0); hl.setSpacing(12)
             if icon: hl.addWidget(icon)
             if widget: hl.addWidget(widget)
             lbl = QLabel(text.upper())
             lbl.setStyleSheet("color: #D4AF37; font-family: 'Segoe UI'; font-size: 14px; font-weight: 700; letter-spacing: 0.12em;")
-            hl.addWidget(lbl)
+            hl.addWidget(lbl); hl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             return w
-        
+            
         self.wave = WaveformWidget()
         self.spin = SpinnerWidget()
         self.check = SVGIconWidget("CHECK", 20)
@@ -313,40 +348,73 @@ class MorphPill(QFrame):
         self.stack.addWidget(make_st("Listening", self.wave))
         self.stack.addWidget(make_st("Polishing", self.spin))
         self.stack.addWidget(make_st("Polished & Pasted", None, self.check))
-        
-        l.addWidget(self.stack)
-        self.setStyleSheet("QFrame#pill { background-color: #0A0A0A; border: 1.5px solid #33290D; border-radius: 32px; }")
+        self.stack.hide()
+
+        # Invisible hover/click detector wrapping the active button area
+        self.interact_rect = QWidget(self)
+        self.interact_rect.move(6, 6)
+        self.interact_rect.setFixedSize(52, 52)
+        self.interact_rect.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.interact_rect.enterEvent = lambda e: self.hovered.emit(True)
+        self.interact_rect.leaveEvent = lambda e: self.hovered.emit(False)
+        self.interact_rect.mousePressEvent = self._handle_click
+
+    def _handle_click(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            # If clicked on the right half while expanded (cancel button sliding out area)
+            if event.position().x() > 52 and self.cancel_wrapper.x() > 6:
+                self.cancel_clicked.emit()
+            else:
+                self.main_clicked.emit()
 
     @pyqtProperty(int)
-    def pill_width(self): return self._w
+    def pill_width(self): return self.width()
     @pill_width.setter
-    def pill_width(self, val):
-        self._w = val
-        self.setFixedWidth(val)
+    def pill_width(self, val): self.setFixedWidth(val)
+
+    @pyqtProperty(int)
+    def cancel_x(self): return self.cancel_wrapper.x()
+    @cancel_x.setter
+    def cancel_x(self, val): 
+        self.cancel_wrapper.move(val, 6)
+        self.interact_rect.setFixedWidth(52 + (val - 6)) # Expands clickable hover bounding box seamlessly!
+    
+    @pyqtProperty(int)
+    def stack_x(self): return self.stack.x()
+    @stack_x.setter
+    def stack_x(self, val): self.stack.move(val, 6)
 
 class Chatterbox(QWidget):
     toggle = pyqtSignal()
     rebind = pyqtSignal()
     def __init__(self):
         super().__init__()
-        self.is_rec = False
+        self.state = "ready"
+        self.is_speaking = False
+        self.silence_frames = 0
+        self.no_input_frames = 0
         self.mt = None
         self.v = None
-        self.ani = None
         
-        self.hide_timer = QTimer(self); self.hide_timer.setSingleShot(True); self.hide_timer.timeout.connect(self.on_reset)
+        self.hide_timer = QTimer(self); self.hide_timer.setSingleShot(True); self.hide_timer.timeout.connect(self.fade_out)
         self.rst_timer = QTimer(self); self.rst_timer.setSingleShot(True); self.rst_timer.timeout.connect(self._rst)
         
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        # Main layout holds the pill to allow the shadow to spill out
-        vl = QVBoxLayout(self); vl.setContentsMargins(60, 60, 60, 60) # Increased margin for shadow
+        
+        # Strict 800x300 structural bounding box eliminates ALL Windows layered window glitches
+        self.setFixedSize(800, 300) 
+        
+        vl = QHBoxLayout(self); vl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.p = MorphPill(); vl.addWidget(self.p)
         
-        # exact HTML box-shadow approx
         s = QGraphicsDropShadowEffect(self)
-        s.setBlurRadius(80); s.setColor(QColor(0, 0, 0, 240)); s.setOffset(0, 25) # Deeper shadow
+        s.setBlurRadius(100); s.setColor(QColor(0, 0, 0, 160)); s.setOffset(0, 20)
         self.p.setGraphicsEffect(s)
+        
+        self.p.main_clicked.connect(lambda: self.on_tog(from_hotkey=False))
+        self.p.cancel_clicked.connect(self.on_cancel)
+        self.p.hovered.connect(self.on_hover)
         
         self.tray = QSystemTrayIcon(self)
         px = QPixmap(24, 24); px.fill(Qt.GlobalColor.transparent)
@@ -354,7 +422,7 @@ class Chatterbox(QWidget):
         self.tray.setIcon(QIcon(px)); self.tray.show()
         m = QMenu(); m.addAction("Settings", self.opts); m.addAction("Exit", QApplication.quit); self.tray.setContextMenu(m)
         
-        self.toggle.connect(self.on_tog); self.rebind.connect(self.on_reb)
+        self.toggle.connect(lambda: self.on_tog(from_hotkey=True)); self.rebind.connect(self.on_reb)
         self.on_reb(); self.hide()
 
     def on_reb(self):
@@ -363,73 +431,154 @@ class Chatterbox(QWidget):
             except: pass
         if APP_CONFIG.enabled: self.h = keyboard.add_hotkey(APP_CONFIG.hotkey, self.toggle.emit, suppress=False)
 
-    def on_tog(self):
-        if not APP_CONFIG.enabled: return
-        if not self.is_rec:
-            # STOP ALL PENDING TIMERS/ANIMATIONS FIRST
-            if self.ani: self.ani.stop()
-            if self.mt: self.mt.stop()
-            if self.v: self.v.stop()
-            self.hide_timer.stop()
-            self.rst_timer.stop()
-            
-            # FORCE RESET BEFORE SHOWING
-            self._rst()
-            
-            self.is_rec = True
-            self.p.icon.set_mode("STOP"); self.p.btn.setStyleSheet("background-color: #D4AF37; border-radius: 26px;")
-            self.p.stack.setCurrentIndex(1); self.p.pill_width = 240; self.p.wave.start()
-            winsound.Beep(1000, 100)
-            
-            # Show and animate
-            self.show(); self.setWindowOpacity(0)
+    def check_show(self):
+        if self.isHidden() or self.windowOpacity() < 1:
+            self.show()
             g = QApplication.primaryScreen().geometry(); cx = (g.width() - self.width()) // 2
-            self.move(cx, g.height() - 80)
-            
-            self.ani = QParallelAnimationGroup()
-            f = QPropertyAnimation(self, b"windowOpacity"); f.setDuration(300); f.setEndValue(1)
-            s = QPropertyAnimation(self, b"pos"); s.setDuration(500); s.setEndValue(QPoint(cx, g.height() - 200)); s.setEasingCurve(QEasingCurve.Type.OutCubic)
-            self.ani.addAnimation(f); self.ani.addAnimation(s); self.ani.start()
-            
-            self.w = AudioThread(); self.w.finished.connect(self.on_fin); self.w.start()
-        else:
-            winsound.Beep(800, 80); self.w.active = False
-            
-            # IMMEDIATE FEEDBACK: Switch to Polishing UI while Whisper processes
-            self.p.wave.stop()
-            self.p.icon.set_mode("CUBE")
-            self.p.spin.start()
-            self.trans(2, 220)
+            self.move(cx, g.height() - 250)
+            if self.v: self.v.stop()
+            self.v = QPropertyAnimation(self, b"windowOpacity")
+            self.v.setDuration(400); self.v.setEndValue(1); self.v.start()
 
-    def trans(self, idx, w):
+    def on_tog(self, from_hotkey=True):
+        if not APP_CONFIG.enabled: return
+        
+        if self.state == "ready":
+            if not from_hotkey: return
+            self.hide_timer.stop(); self.rst_timer.stop(); self._rst()
+            self.state = "listening"
+            self.is_speaking = False
+            self.silence_frames = 0
+            self.no_input_frames = 0
+            
+            winsound.Beep(1000, 100)
+            self.check_show()
+            
+            self.p.stack.setCurrentIndex(0)
+            self.p.stack.hide()
+            self.trans(-1, 64, 6, 74) # pill, cancel_x, stack_x
+            
+            self.w = AudioThread()
+            self.w.finished.connect(self.on_fin)
+            self.w.level.connect(self.on_level)
+            self.w.start()
+            
+        elif self.state == "listening":
+            if from_hotkey:
+                winsound.Beep(800, 80)
+                self.state = "polishing"
+                self.w.active = False # stops recording, on_fin triggers natively
+                self.p.wave.stop(); self.p.spin.start()
+                self.p.icon.set_mode("CUBE", "#000")
+                self.p.stack.setCurrentIndex(2)
+                self.p.stack.show()
+                self.trans(2, 230, 6, 74)
+            else:
+                self.w.paused = not self.w.paused
+                if self.w.paused:
+                    self.p.icon.set_mode("CUBE", "#000")
+                    self.p.wave.stop()
+                else:
+                    self.p.icon.set_mode("PAUSE", "#000")
+                    if self.is_speaking: self.p.wave.start()
+
+    def on_cancel(self):
+        if self.state != "listening": return
+        winsound.Beep(500, 100)
+        self.w.active = False
+        try: self.w.finished.disconnect()
+        except: pass
+        self.fade_out()
+
+    def on_hover(self, h):
+        if self.state != "listening": return
+        if h:
+            self.p.icon.set_mode("CUBE" if getattr(self.w, 'paused', False) else "PAUSE", "#000")
+            self.trans(1 if self.is_speaking else -1, 280 if self.is_speaking else 124, 66, 134)
+        else:
+            self.p.icon.set_mode("CUBE", "#000")
+            self.trans(1 if self.is_speaking else -1, 220 if self.is_speaking else 64, 6, 74)
+
+    def on_level(self, rms):
+        if self.state != "listening" or getattr(self.w, 'paused', False): return
+        
+        h = self.p.interact_rect.underMouse()
+        if rms > 500:
+            self.silence_frames = 0
+            if not self.is_speaking:
+                self.no_input_frames = 0
+                self.is_speaking = True
+                self.p.stack.setCurrentIndex(1)
+                self.p.stack.show()
+                self.p.wave.start()
+                self.trans(1, 280 if h else 220, 66 if h else 6, 134 if h else 74)
+        else:
+            if self.is_speaking:
+                self.silence_frames += 1
+                if self.silence_frames > 40: # roughly 2-3 seconds
+                    self.is_speaking = False
+                    self.p.wave.stop()
+                    self.trans(-1, 124 if h else 64, 66 if h else 6, 134 if h else 74)
+            else:
+                self.no_input_frames += 1
+                if self.no_input_frames > 250: # roughly 10 secs
+                    self.on_cancel()
+
+    def trans(self, idx, p_w, c_x, s_x):
         if self.mt: self.mt.stop()
-        self.mt = QPropertyAnimation(self.p, b"pill_width")
-        self.mt.setDuration(400); self.mt.setEndValue(w); self.mt.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.mt.valueChanged.connect(lambda: self.move((QApplication.primaryScreen().geometry().width() - self.width()) // 2, self.y()))
-        self.mt.finished.connect(lambda: self.p.stack.setCurrentIndex(idx))
+        self.mt = QParallelAnimationGroup()
+        
+        for tgt, prop, end in [(self.p, b"pill_width", p_w), (self.p, b"cancel_x", c_x), (self.p, b"stack_x", s_x)]:
+            a = QPropertyAnimation(tgt, prop)
+            a.setDuration(700); a.setEndValue(end); a.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self.mt.addAnimation(a)
+            
+        if idx == -1:    
+            self.mt.finished.connect(lambda: self.p.stack.hide())
+        else:
+            self.mt.finished.connect(lambda: self.p.stack.setCurrentIndex(idx))
+            
         self.mt.start()
 
     def on_fin(self, t):
-        if t == "ERROR": self.on_reset(); return
+        if t == "ERROR": self.fade_out(); return
+        if self.state == "listening":
+            self.state = "polishing"
+            self.p.wave.stop(); self.p.spin.start()
+            self.p.icon.set_mode("CUBE", "#000")
+            self.p.stack.setCurrentIndex(2)
+            self.p.stack.show()
+            self.trans(2, 230, 6, 74)
         
-        # We are already transitioning to/in state 2 (Polishing). Just start Ollama.
         self.oll = OllamaThread(t); self.oll.finished.connect(self.on_done); self.oll.start()
 
     def on_done(self, t):
-        pyperclip.copy(t + ' '); pyautogui.hotkey('ctrl', 'v'); self.p.spin.stop()
-        self.p.btn.setStyleSheet("background-color: #1A1A1A; border: 1px solid #D4AF37; border-radius: 26px;")
-        self.p.icon.set_mode("CUBE", "#D4AF37"); self.trans(3, 330)
+        pyperclip.copy(t + ' '); pyautogui.hotkey('ctrl', 'v'); 
+        self.state = "finished"
+        self.p.spin.stop()
+        self.p.main_btn.setStyleSheet("QFrame { background-color: #1A1A1A; border: 1.5px solid #D4AF37; border-radius: 26px; }")
+        self.p.icon.set_mode("CUBE", "#D4AF37")
+        self.p.stack.setCurrentIndex(3)
+        self.p.stack.show()
+        self.trans(3, 290, 6, 74)
         self.hide_timer.start(2500)
-
-    def on_reset(self):
+        
+    def fade_out(self):
+        self.state = "ready"
+        self.trans(-1, 64, 6, 74)
+        
         if self.v: self.v.stop()
-        self.v = QPropertyAnimation(self, b"windowOpacity"); self.v.setDuration(400); self.v.setEndValue(0); self.v.finished.connect(self.hide); self.v.start()
-        self.is_rec = False
+        self.v = QPropertyAnimation(self, b"windowOpacity")
+        self.v.setDuration(400); self.v.setEndValue(0)
+        self.v.finished.connect(self.hide)
+        self.v.start()
+        
         self.rst_timer.start(500)
-
+        
     def _rst(self):
-        self.p.icon.set_mode("CUBE", "#000"); self.p.btn.setStyleSheet("background-color: #D4AF37; border-radius: 26px;")
-        self.p.pill_width = 260; self.p.stack.setCurrentIndex(0)
+        self.p.stack.hide()
+        self.p.main_btn.setStyleSheet("QFrame { background-color: #D4AF37; border-radius: 26px; }")
+        self.p.icon.set_mode("CUBE", "#000")
 
     def opts(self):
         d = SettingsDialog(self)
