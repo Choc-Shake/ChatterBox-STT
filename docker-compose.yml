@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cpu
+    container_name: chatterbox-whisper-cpu
+    ports:
+      - "8000:8000"
+    environment:
+      - WHISPER_MODEL=base
+    volumes:
+      - whisper_models:/root/.cache/huggingface
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: chatterbox-ollama-cpu
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Automatically pull the micro-model on startup
+    entrypoint: /bin/sh -c "ollama serve & sleep 5 && ollama pull qwen2.5:0.5b && wait"
+
+volumes:
+  whisper_models:
+  ollama_data:

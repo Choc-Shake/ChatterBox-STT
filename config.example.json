@@ -1,0 +1,6 @@
+{
+  "hotkey": "ctrl+alt+space",
+  "whisper_ws_url": "http://YOUR_SERVER_IP:8001/v1/audio/transcriptions",
+  "ollama_api_url": "http://YOUR_SERVER_IP:11435/api/generate",
+  "ollama_model": "qwen2.5:0.5b"
+}

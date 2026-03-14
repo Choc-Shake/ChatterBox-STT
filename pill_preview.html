@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatterbox Pill UI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --gold: #D4AF37;
+            --pill-bg: #0A0A0A;
+            --page-bg: #050505;
+        }
+
+        body {
+            background-color: var(--page-bg);
+            font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            color: white;
+        }
+
+        /* The Dynamic Pill Base */
+        .chatter-pill {
+            background-color: var(--pill-bg);
+            border: 1px solid rgba(212, 175, 55, 0.25);
+            border-radius: 100px;
+            display: inline-flex;
+            align-items: center;
+            padding: 6px;
+            box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.8);
+            transition: width 0.5s cubic-bezier(0.2, 1, 0.2, 1), padding 0.5s ease, gap 0.5s ease, border-color 0.3s ease;
+            overflow: hidden;
+            white-space: nowrap;
+            height: 64px;
+            box-sizing: border-box;
+            will-change: width;
+        }
+
+        /* Prevent children from squishing during width transitions */
+        .chatter-pill > * {
+            flex-shrink: 0;
+        }
+
+        /* Ready State: Perfect Circle */
+        .chatter-pill.is-ready {
+            padding-right: 6px;
+            gap: 0;
+        }
+
+        /* Active State: Elongated */
+        .chatter-pill.is-active {
+            padding-right: 28px;
+            gap: 16px;
+        }
+
+        /* Completely hide content area in ready state to ensure no gaps */
+        .chatter-pill.is-ready .content-area {
+            display: none;
+        }
+
+        /* The Button Controls Wrapper */
+        .controls-group {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            transition: gap 0.4s cubic-bezier(0.2, 1, 0.2, 1);
+        }
+
+        .controls-group.hovered {
+            gap: 8px; /* Spacing between main btn and cancel btn when opened */
+        }
+
+        /* Main Action Button */
+        .toggle-btn {
+            background-color: var(--gold);
+            color: #000;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.2, 1, 0.2, 1);
+            border: none;
+            outline: none;
+            flex-shrink: 0;
+            z-index: 10;
+        }
+
+        .toggle-btn:hover {
+            transform: scale(1.05);
+            filter: brightness(1.1);
+        }
+
+        .toggle-btn:active {
+            transform: scale(0.94);
+        }
+
+        /* Red Cancel Button Wrapper (Handles the slide out) */
+        .cancel-btn-wrapper {
+            width: 0;
+            opacity: 0;
+            overflow: hidden;
+            display: flex;
+            transition: width 0.4s cubic-bezier(0.2, 1, 0.2, 1), opacity 0.4s cubic-bezier(0.2, 1, 0.2, 1);
+        }
+
+        .controls-group.hovered .cancel-btn-wrapper {
+            width: 52px;
+            opacity: 1;
+        }
+
+        /* Red Cancel Button */
+        .cancel-btn {
+            background-color: #EF4444;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: all 0.2s ease;
+        }
+
+        .cancel-btn:hover {
+            background-color: #DC2626;
+        }
+
+        .cancel-btn:active {
+            transform: scale(0.92);
+        }
+
+        /* White square edge inside cancel button */
+        .stop-square {
+            width: 14px;
+            height: 14px;
+            border: 2px solid white;
+            border-radius: 2px;
+            background: transparent;
+        }
+
+        /* Content Areas & Transitions */
+        .content-area {
+            position: relative;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .state {
+            position: absolute;
+            left: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            opacity: 0;
+            transform: translateX(12px);
+            transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 1, 0.2, 1);
+            pointer-events: none;
+            flex-shrink: 0;
+        }
+
+        .state.active {
+            position: relative;
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
+        }
+
+        .label-text {
+            color: var(--gold);
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        /* Audio Waveform */
+        .waveform {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .bar {
+            width: 2px;
+            height: 4px;
+            background-color: var(--gold);
+            border-radius: 1px;
+        }
+
+        .listening .bar {
+            animation: wave 0.6s infinite alternate ease-in-out;
+        }
+
+        @keyframes wave {
+            0% { height: 4px; opacity: 0.4; }
+            100% { height: 18px; opacity: 1; }
+        }
+
+        .bar:nth-child(2) { animation-delay: 0.1s; }
+        .bar:nth-child(3) { animation-delay: 0.2s; }
+        .bar:nth-child(4) { animation-delay: 0.15s; }
+
+        /* Minimal Spinner */
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(212, 175, 55, 0.1);
+            border-right-color: var(--gold);
+            border-radius: 50%;
+            animation: rotate 0.7s linear infinite;
+        }
+
+        @keyframes rotate {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Success Checkmark Animation */
+        .check-icon {
+            stroke-dasharray: 24;
+            stroke-dashoffset: 24;
+            animation: dash 0.5s cubic-bezier(0.2, 1, 0.2, 1) forwards 0.2s;
+        }
+
+        @keyframes dash {
+            to { stroke-dashoffset: 0; }
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- Default state applies the .is-ready class (perfect circle) -->
+    <div class="chatter-pill is-ready" id="pill">
+        
+        <!-- Controls Group handles the hover menu extension -->
+        <div class="controls-group" id="controls">
+            <!-- Main Button -->
+            <button class="toggle-btn" id="main-btn">
+                <!-- Hexagonal Audio-Box Icon -->
+                <svg id="cube-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/>
+                    <line x1="12" y1="9" x2="12" y2="15" />
+                    <line x1="8.5" y1="10.5" x2="8.5" y2="13.5" />
+                    <line x1="15.5" y1="10.5" x2="15.5" y2="13.5" />
+                </svg>
+                <!-- Pause Icon (Reveals on hover) -->
+                <svg id="pause-icon" class="hidden" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16" rx="1"></rect>
+                    <rect x="14" y="4" width="4" height="16" rx="1"></rect>
+                </svg>
+            </button>
+
+            <!-- Red Cancel Button Wrapper -->
+            <div class="cancel-btn-wrapper" id="cancel-wrapper">
+                <button class="cancel-btn" id="cancel-btn">
+                    <div class="stop-square"></div>
+                </button>
+            </div>
+        </div>
+
+        <div class="content-area" id="content-container">
+            <!-- Listening -->
+            <div class="state" id="listening">
+                <div class="waveform">
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                </div>
+                <span class="label-text">Listening</span>
+            </div>
+
+            <!-- Polishing -->
+            <div class="state" id="polishing">
+                <div class="spinner"></div>
+                <span class="label-text">Polishing</span>
+            </div>
+
+            <!-- Finished -->
+            <div class="state" id="finished">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D4AF37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" class="check-icon"></polyline>
+                </svg>
+                <span class="label-text">Polished & Pasted</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const pill = document.getElementById('pill');
+        const controls = document.getElementById('controls');
+        const cancelWrapper = document.getElementById('cancel-wrapper');
+        
+        const mainBtn = document.getElementById('main-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+        const cubeIcon = document.getElementById('cube-icon');
+        const pauseIcon = document.getElementById('pause-icon');
+        
+        const listening = document.getElementById('listening');
+        const polishing = document.getElementById('polishing');
+        const finished = document.getElementById('finished');
+
+        const states = [listening, polishing, finished];
+        let currentStateStr = 'ready'; 
+
+        // Set initial perfect circle width
+        pill.style.width = pill.offsetWidth + 'px';
+
+        /**
+         * Safely measures the natural width of the layout without CSS transitions 
+         * interfering, then applies the transition smoothly.
+         */
+        function transitionWidth(action) {
+            const startWidth = pill.offsetWidth;
+            
+            // 1. Temporarily freeze all transitions to instantly measure layout
+            pill.style.transition = 'none';
+            controls.style.transition = 'none';
+            cancelWrapper.style.transition = 'none';
+            states.forEach(s => s.style.transition = 'none');
+
+            // 2. Perform DOM changes
+            action();
+
+            // 3. Measure perfect target width
+            pill.style.width = 'auto';
+            const endWidth = pill.offsetWidth;
+
+            // 4. Snap back to start width
+            pill.style.width = startWidth + 'px';
+            void pill.offsetHeight; // Force reflow
+
+            // 5. Unfreeze and animate to end width
+            pill.style.transition = '';
+            controls.style.transition = '';
+            cancelWrapper.style.transition = '';
+            states.forEach(s => s.style.transition = '');
+            
+            pill.style.width = endWidth + 'px';
+        }
+
+        // --- HOVER MENU LOGIC ---
+        function toggleHover(isHovering) {
+            if (currentStateStr !== 'listening') return;
+
+            transitionWidth(() => {
+                if (isHovering) {
+                    controls.classList.add('hovered');
+                    cubeIcon.classList.add('hidden');
+                    pauseIcon.classList.remove('hidden');
+                } else {
+                    controls.classList.remove('hovered');
+                    cubeIcon.classList.remove('hidden');
+                    pauseIcon.classList.add('hidden');
+                }
+            });
+        }
+
+        controls.addEventListener('mouseenter', () => toggleHover(true));
+        controls.addEventListener('mouseleave', () => toggleHover(false));
+
+        // --- MAIN BUTTON LOGIC ---
+        mainBtn.addEventListener('click', () => {
+            if (currentStateStr === 'ready') {
+                currentStateStr = 'listening';
+                
+                transitionWidth(() => {
+                    pill.className = 'chatter-pill is-active';
+                    states.forEach(s => s.classList.remove('active'));
+                    listening.classList.add('active');
+
+                    // Instantly trigger hover UI if mouse is already on the button
+                    if (controls.matches(':hover')) {
+                        controls.classList.add('hovered');
+                        cubeIcon.classList.add('hidden');
+                        pauseIcon.classList.remove('hidden');
+                    }
+                });
+            } 
+            else if (currentStateStr === 'listening') {
+                // Done talking -> Move to Polish
+                currentStateStr = 'polishing';
+                
+                transitionWidth(() => {
+                    controls.classList.remove('hovered');
+                    pauseIcon.classList.add('hidden');
+                    cubeIcon.classList.remove('hidden');
+                    
+                    states.forEach(s => s.classList.remove('active'));
+                    polishing.classList.add('active');
+                });
+                
+                // Simulate processing
+                setTimeout(() => {
+                    if (currentStateStr === 'polishing') {
+                        currentStateStr = 'finished';
+                        
+                        transitionWidth(() => {
+                            states.forEach(s => s.classList.remove('active'));
+                            finished.classList.add('active');
+                            mainBtn.style.backgroundColor = '#1a1a1a';
+                            mainBtn.style.color = '#D4AF37';
+                        });
+
+                        // Automatically return to perfect circle
+                        setTimeout(() => {
+                            if (currentStateStr === 'finished') {
+                                currentStateStr = 'ready';
+                                
+                                transitionWidth(() => {
+                                    pill.className = 'chatter-pill is-ready';
+                                    states.forEach(s => s.classList.remove('active'));
+                                    mainBtn.style.backgroundColor = '#D4AF37';
+                                    mainBtn.style.color = '#000';
+                                });
+                            }
+                        }, 2500);
+                    }
+                }, 2000);
+            }
+        });
+
+        // --- CANCEL BUTTON LOGIC ---
+        cancelBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevents clicking the main button underneath
+            
+            if (currentStateStr === 'listening') {
+                currentStateStr = 'ready';
+                
+                transitionWidth(() => {
+                    pill.className = 'chatter-pill is-ready';
+                    states.forEach(s => s.classList.remove('active'));
+                    controls.classList.remove('hovered');
+                    pauseIcon.classList.add('hidden');
+                    cubeIcon.classList.remove('hidden');
+                });
+            }
+        });
+
+    </script>
+</body>
+</html>
