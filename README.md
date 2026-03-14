@@ -1,4 +1,4 @@
-# Chatterbox Voice Assistant
+# Chatterbox Speech To Text
 
 Chatterbox is a lightweight, ultra-premium desktop voice assistant that perfectly integrates local Speech-to-Text inference with local LLM-based grammar polishing. 
 
@@ -7,7 +7,7 @@ Built with **PyQt6** using a completely custom, purely absolute-positioned UI en
 ## ✨ Features
 
 - **Invisible & Unobtrusive:** Operates entirely in the system tray. Press `Ctrl+Space` to summon the minimalist 64x64px "Ready" pill interface.
-- **Smart Voice Activity Detection (VAD):** The pill dynamically springs out to 220px when it detects your voice (`RMS > 500`), illuminating an animated audio waveform.
+- **Smart Voice Activity Detection (VAD):** The pill dynamically springs out when it detects your voice (`RMS > 500`), illuminating an animated audio waveform.
 - **Auto-Silence Collapse:** Stop talking for ~1 second, and the UI elastically shrinks back down to the circular dormant state without losing your context. Complete silence for 5+ seconds triggers an auto-abort to stay out of your way.
 - **Interactive Hover Menu:** Hovering over the golden active button smoothly slides out a Red Cancel button. The main button icon transitions from "Active" to "Pause". 
 - **Pause & Resume:** Click the golden button mid-dictation to instantly pause and unpause the transcription listener.
