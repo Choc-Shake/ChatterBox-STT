@@ -25,7 +25,7 @@ Perfect for older hardware like a 2015 MacBook Pro running CasaOS.
    ```
 3. **Wait a few minutes.** The Ollama container will automatically download the `qwen2.5:0.5b` micro-model in the background.
 
-### Option B: Nvidia GPU
+### Option B: Nvidia GPU (Ngl i haven't tested this yet lol)
 
 If your server has an Nvidia GPU and the Nvidia Container Toolkit installed:
 
